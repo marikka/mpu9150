@@ -1,0 +1,29 @@
+{
+  "name": "mpu9150",
+  "version": "0.0.1",
+  "description": "A library to communicate with the MPU-9150 9dof chip.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shrkey/mpu9150.git"
+  },
+  "dependencies": {
+    "i2c" : "*"
+  },
+  "keywords": [
+    "beaglebone",
+    "node",
+    "mpu9150",
+    "i2c",
+    "serial"
+  ],
+  "author": "Shrkey",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/shrkey/mpu9150/issues"
+  },
+  "readmeFilename": "readme.MD"
+}
