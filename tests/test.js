@@ -7,6 +7,7 @@ if( imu.testConnection() ) {
 	
 	setInterval( function() {
 		console.log(imu.getMotion9());
+		console.log( imu.getHeadingDegrees() );
 	}, 1000 );
 }
 

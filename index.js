@@ -52,6 +52,15 @@ function MPU9150(device, address, mag_address ) {
   this.address = address || MPU9150.DEFAULT_ADDRESS;
 
   this.mag_address = mag_address || MPU9150.RA_MAG_DEFAULT_ADDRESS;
+
+  this.heading = {
+    x:0,
+    y:0,
+    z:0,
+    lastupdate:0
+  };
+
+
 }
 
 /**
@@ -73,12 +82,7 @@ MPU9150.prototype.initialize = function() {
   
   this.setSleepEnabled(false);
 
-  this.i2cmag = this.enableMag();
-
-  if( !this.testMag() ) {
-    console.log( 'Could not find the Compass module');
-  }
-  
+  this.enableMag();
 
 };
 
@@ -336,7 +340,7 @@ MPU9150.RA_MAG_ZOUT_L   =   0x07
 MPU9150.RA_MAG_ZOUT_H   =   0x08
 
 MPU9150.RA_CNTL         =   0x0A;
-MPU9150.RA_MODE_SINGLE  =   0x1;
+MPU9150.RA_MODE_SINGLE  =   0x01;
 
 
 MPU9150.INTCFG_I2C_BYPASS_EN_BIT    =   1;
@@ -381,7 +385,35 @@ MPU9150.prototype.enableMag = function() {
     // Enable the compass
     this.setI2CBypassEnabled( true );
 
-    return new I2cDev( this.mag_address, { device : this.device } );
+    this.setUpdatePeriod();
+
+    this.i2cmag = new I2cDev( this.mag_address, { device : this.device } );
+
+    if( this.testMag() ) {
+        this.i2cmag.writeBytes( MPU9150.RA_CNTL, 0x00 );    // Power down
+        this.i2cmag.writeBytes( MPU9150.RA_CNTL, 0x0F );    // Self test
+        this.i2cmag.writeBytes( MPU9150.RA_CNTL, 0x00 );    // Power down
+
+        /*
+        this.i2cdev.writeBytes(0x24, 0x40); //Wait for Data at Slave0
+        this.i2cdev.writeBytes(0x25, 0x8C); //Set i2c address at slave0 at 0x0C
+        this.i2cdev.writeBytes(0x26, 0x02); //Set where reading at slave 0 starts
+        this.i2cdev.writeBytes(0x27, 0x88); //set offset at start reading and enable
+        this.i2cdev.writeBytes(0x28, 0x0C); //set i2c address at slv1 at 0x0C
+        this.i2cdev.writeBytes(0x29, 0x0A); //Set where reading at slave 1 starts
+        this.i2cdev.writeBytes(0x2A, 0x81); //Enable at set length to 1
+        this.i2cdev.writeBytes(0x64, 0x01); //overvride register
+        this.i2cdev.writeBytes(0x67, 0x03); //set delay rate
+        this.i2cdev.writeBytes(0x01, 0x80);
+ 
+        this.i2cdev.writeBytes(0x34, 0x04); //set i2c slv4 delay
+        this.i2cdev.writeBytes(0x64, 0x00); //override register
+        this.i2cdev.writeBytes(0x6A, 0x00); //clear usr setting
+        this.i2cdev.writeBytes(0x64, 0x01); //override register
+        this.i2cdev.writeBytes(0x6A, 0x20); //enable master i2c mode
+        this.i2cdev.writeBytes(0x34, 0x13); //disable slv4
+        */
+    }
 };
 
 // Read the first byte of the compass and check it returns what it should
@@ -391,47 +423,72 @@ MPU9150.prototype.testMag = function() {
     return (buffer[0] == 0x48);
 }
 
+MPU9150.prototype.setUpdatePeriod = function( ms ) {
+
+    this.mag_update_period = ms || 100;
+
+} 
+
 MPU9150.prototype.getHeading = function() {
 
     this.i2cmag.writeBytes( MPU9150.RA_CNTL, MPU9150.RA_MODE_SINGLE );
     
-    var buffer = this.i2cmag.readBytes( MPU9150.RA_MAG_XOUT_L, 6 );
+    setTimeout( (function( mpu9150 ) {
+        
+        if( mpu9150.heading.lastupdate + mpu9150.mag_update_period <  Date.now() ) {
+
+            var buffer = mpu9150.i2cmag.readBytes( 0x03, 6 );
+
+            mpu9150.heading.x = buffer.readInt16LE(0);
+            mpu9150.heading.y = buffer.readInt16LE(2);
+            mpu9150.heading.z = buffer.readInt16LE(4);
+
+            mpu9150.heading.lastupdate = Date.now();
+
+        }
+
+    })( this ), 100 );
     
     return [
-        buffer.readInt16LE(0),
-        buffer.readInt16LE(2),
-        buffer.readInt16LE(4)
+        this.heading.x,
+        this.heading.y,
+        this.heading.z
     ];
         
 }
 
+MPU9150.prototype.getHeadingDegrees = function() {
+
+    var buffer = this.getHeading();
+
+    heading = Math.atan2( buffer[1], buffer[0] ) * 180.0 / 3.14159265 + 180;
+    while (heading < 0) heading += 360;
+    while (heading > 360) heading -= 360;
+
+    return heading;
+}
+
 MPU9150.prototype.getHeadingX = function() {
 
-    this.i2cmag.writeBytes( MPU9150.RA_CNTL, MPU9150.RA_MODE_SINGLE );
-    
-    var buffer = this.i2cmag.readBytes( MPU9150.RA_MAG_XOUT_L, 2 );
-    
-    return buffer.readInt16LE(0);
+    var buffer = this.getHeading();
+
+    return buffer[0];
         
 }
 
 MPU9150.prototype.getHeadingY = function() {
 
-    this.i2cmag.writeBytes( MPU9150.RA_CNTL, MPU9150.RA_MODE_SINGLE );
-    
-    var buffer = this.i2cmag.readBytes( MPU9150.RA_MAG_YOUT_L, 2 );
-    
-    return buffer.readInt16LE(0);
+    var buffer = this.getHeading();
+
+    return buffer[1];
         
 }
 
 MPU9150.prototype.getHeadingZ = function() {
 
-    this.i2cmag.writeBytes( MPU9150.RA_CNTL, MPU9150.RA_MODE_SINGLE );
-    
-    var buffer = this.i2cmag.readBytes( MPU9150.RA_MAG_ZOUT_L, 2 );
-    
-    return buffer.readInt16LE(0);
+    var buffer = this.getHeading();
+
+    return buffer[2];
         
 }
 
