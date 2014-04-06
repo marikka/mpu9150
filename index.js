@@ -57,6 +57,8 @@ function MPU6050(device, address) {
 MPU6050.prototype.initialize = function() {
 
   this.i2cdev = new I2cDev( this.address, { device : this.device });
+
+  //this.i2cmag = new I2cDev( )
   
   this.setClockSource( MPU6050.CLOCK_PLL_XGYRO );
   
@@ -178,25 +180,6 @@ MPU6050.prototype.getFullScaleAccelRange = function() {
  */
 MPU6050.prototype.setFullScaleAccelRange = function(range) {
   this.i2cdev.writeBits( MPU6050.RA_ACCEL_CONFIG, MPU6050.ACONFIG_AFS_SEL_BIT, MPU6050.ACONFIG_AFS_SEL_LENGTH, range );
-};
-
-/**
- * Get raw 6-axis motion sensor readings (accel/gyro).
- * Retrieves all currently available motion sensor values.
- * @see getAcceleration()
- * @see getRotation()
- */
-MPU6050.prototype.getMotion6 = function() {
-  buffer = this.i2cdev.readBytes( MPU6050.RA_ACCEL_XOUT_H, 14 );
-  
-  return [
-      buffer.readInt16BE(0),
-      buffer.readInt16BE(2),
-      buffer.readInt16BE(4),
-      buffer.readInt16BE(8),
-      buffer.readInt16BE(10),
-      buffer.readInt16BE(12)
-  ];
 };
 
 // ACCEL_*OUT_* registers
@@ -327,6 +310,133 @@ MPU6050.prototype.getRotationZ = function() {
    return buffer.readInt16BE(0);  
 };
 
+/* Magnetometer functions */
+
+//Magnetometer Registers
+MPU6050.RA_INT_PIN_CFG  =   0x37
+
+MPU6050.RA_MAG_ADDRESS  =   0x0C
+MPU6050.RA_MAG_XOUT_L   =   0x03
+MPU6050.RA_MAG_XOUT_H   =   0x04
+MPU6050.RA_MAG_YOUT_L   =   0x05
+MPU6050.RA_MAG_YOUT_H   =   0x06
+MPU6050.RA_MAG_ZOUT_L   =   0x07
+MPU6050.RA_MAG_ZOUT_H   =   0x08
+
+/*
+
+//MPU9150 Compass
+#define MPU9150_CMPS_XOUT_L        0x4A   // R
+#define MPU9150_CMPS_XOUT_H        0x4B   // R
+#define MPU9150_CMPS_YOUT_L        0x4C   // R
+#define MPU9150_CMPS_YOUT_H        0x4D   // R
+#define MPU9150_CMPS_ZOUT_L        0x4E   // R
+#define MPU9150_CMPS_ZOUT_H        0x4F   // R
+
+//http://pansenti.wordpress.com/2013/03/26/pansentis-invensense-mpu-9150-software-for-arduino-is-now-on-github/
+//Thank you to pansenti for setup code.
+void MPU9150_setupCompass(){
+        int tempAddress = MPU9150_I2C_ADDRESS; //temporarily store mpu9150 i2c address as it will later be modified
+ 
+        MPU9150_I2C_ADDRESS = 0x0C;      //change Address to Compass   
+ 
+        MPU9150_writeSensor(0x0A, 0x00); //PowerDownMode
+        MPU9150_writeSensor(0x0A, 0x0F); //SelfTest
+        MPU9150_writeSensor(0x0A, 0x00); //PowerDownMode
+ 
+        //MPU9150_I2C_ADDRESS = 0x68;      //change Address to MPU
+        MPU9150_I2C_ADDRESS = tempAddress; //new version to revert to original address
+ 
+        MPU9150_writeSensor(0x24, 0x40); //Wait for Data at Slave0
+        MPU9150_writeSensor(0x25, 0x8C); //Set i2c address at slave0 at 0x0C
+        MPU9150_writeSensor(0x26, 0x02); //Set where reading at slave 0 starts
+        MPU9150_writeSensor(0x27, 0x88); //set offset at start reading and enable
+        MPU9150_writeSensor(0x28, 0x0C); //set i2c address at slv1 at 0x0C
+        MPU9150_writeSensor(0x29, 0x0A); //Set where reading at slave 1 starts
+        MPU9150_writeSensor(0x2A, 0x81); //Enable at set length to 1
+        MPU9150_writeSensor(0x64, 0x01); //overvride register
+        MPU9150_writeSensor(0x67, 0x03); //set delay rate
+        MPU9150_writeSensor(0x01, 0x80);
+ 
+        MPU9150_writeSensor(0x34, 0x04); //set i2c slv4 delay
+        MPU9150_writeSensor(0x64, 0x00); //override register
+        MPU9150_writeSensor(0x6A, 0x00); //clear usr setting
+        MPU9150_writeSensor(0x64, 0x01); //override register
+        MPU9150_writeSensor(0x6A, 0x20); //enable master i2c mode
+        MPU9150_writeSensor(0x34, 0x13); //disable slv4
+}
+*/
+
+MPU6050.prototype.enableMag = function() {
+    this.i2cdev.writeByte( MPU6050.RA_INT_PIN_CFG, 0x02 );
+    setTimeout( function() {
+        this.
+        // Needs looked at really - writing to a different address
+        this.i2cdev.writeBytes( MPU6050.RA_MAG_ADDRESS, [0x0A, 0x01] );
+    }, 10 );
+};
+
+// Function help from http://ejtech.blogspot.co.uk/2014/02/mpu-9150-we-are-reading-magnetometer.html
+MPU6050.prototype.getMag = function() {
+    var buffer = this.i2cdev.readBytes( MPU6050.RA_MAG_XOUT_H, 6 );
+
+    return [
+        buffer.readInt16BE(1),
+        buffer.readInt16BE(3),
+        buffer.readInt16BE(5)
+    ];
+
+}
+
+
+/*
+I2Cdev::writeByte(devAddr, MPU6050_RA_INT_PIN_CFG, 0x02); //set i2c bypass enable pin to true to access magnetometer
+    delay(10);
+    I2Cdev::writeByte(MPU9150_RA_MAG_ADDRESS, 0x0A, 0x01); //enable the magnetometer
+    delay(10);
+    I2Cdev::readBytes(MPU9150_RA_MAG_ADDRESS, MPU9150_RA_MAG_XOUT_L, 6, buffer);
+    *mx = (((int16_t)buffer[0]) << 8) | buffer[1];
+    *my = (((int16_t)buffer[2]) << 8) | buffer[3];
+    *mz = (((int16_t)buffer[4]) << 8) | buffer[5];
+*/
+
+/**
+ * Get raw 6-axis motion sensor readings (accel/gyro).
+ * Retrieves all currently available motion sensor values.
+ * @see getAcceleration()
+ * @see getRotation()
+ */
+MPU6050.prototype.getMotion6 = function() {
+  buffer = this.i2cdev.readBytes( MPU6050.RA_ACCEL_XOUT_H, 14 );
+  
+  return [
+      buffer.readInt16BE(0),
+      buffer.readInt16BE(2),
+      buffer.readInt16BE(4),
+      buffer.readInt16BE(8),
+      buffer.readInt16BE(10),
+      buffer.readInt16BE(12)
+  ];
+};
+
+/**
+ * Get raw 9-axis motion sensor readings (accel/gyro/mag).
+ * Retrieves all currently available motion sensor values.
+ * @see getAcceleration()
+ * @see getRotation()
+ */
+MPU6050.prototype.getMotion9 = function() {
+  buffer = this.i2cdev.readBytes( MPU6050.RA_ACCEL_XOUT_H, 14 );
+  
+  return [
+      buffer.readInt16BE(0),
+      buffer.readInt16BE(2),
+      buffer.readInt16BE(4),
+      buffer.readInt16BE(8),
+      buffer.readInt16BE(10),
+      buffer.readInt16BE(12)
+  ];
+};
 
 // PWR_MGMT_1 register
 
