@@ -1,4 +1,4 @@
-var mpu9150 = require('./index.js');
+var mpu9150 = require('./../index.js');
 
 var imu = new mpu9150();
 imu.initialize();
@@ -6,7 +6,7 @@ imu.initialize();
 if( imu.testConnection() ) {
 	
 	setInterval( function() {
-		console.log(imu.getMotion6());
+		console.log(imu.getMotion9());
 	}, 1000 );
 }
 

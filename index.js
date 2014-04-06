@@ -33,17 +33,25 @@
 var i2c = require('i2c');
 
 // Set up the standard addresses for the breakout board - soldered = 0x68, unsoldered = 0x69
-MPU6050.ADDRESS_AD0_LOW = 0x68; // address pin low (GND);
-MPU6050.ADDRESS_AD0_HIGH = 0x69; // address pin high (VCC)
-MPU6050.DEFAULT_ADDRESS = MPU6050.ADDRESS_AD0_LOW;
+MPU9150.ADDRESS_AD0_LOW = 0x68; // address pin low (GND);
+MPU9150.ADDRESS_AD0_HIGH = 0x69; // address pin high (VCC)
+MPU9150.DEFAULT_ADDRESS = MPU9150.ADDRESS_AD0_LOW;
+
+MPU9150.RA_MAG_ADDRESS_00   =   0x0C;
+MPU9150.RA_MAG_ADDRESS_01   =   0x0D;
+MPU9150.RA_MAG_ADDRESS_10   =   0x0E; // default for InvenSense MPU-6050 evaluation board
+MPU9150.RA_MAG_ADDRESS_11   =   0x0F;
+MPU9150.RA_MAG_DEFAULT_ADDRESS = MPU9150.RA_MAG_ADDRESS_00;
 
 /**
  * Default constructor, uses default I2C address or default SS Pin if SPI
- * @see MPU6050.DEFAULT_ADDRESS
+ * @see MPU9150.DEFAULT_ADDRESS
  */
-function MPU6050(device, address) {
+function MPU9150(device, address, mag_address ) {
   this.device = device || '/dev/i2c-1';
-  this.address = address || MPU6050.DEFAULT_ADDRESS;
+  this.address = address || MPU9150.DEFAULT_ADDRESS;
+
+  this.mag_address = mag_address || MPU9150.RA_MAG_DEFAULT_ADDRESS;
 }
 
 /**
@@ -54,18 +62,23 @@ function MPU6050(device, address) {
  * the clock source to use the X Gyro for reference, which is slightly better than
  * the default internal clock source.
  */
-MPU6050.prototype.initialize = function() {
+MPU9150.prototype.initialize = function() {
 
-  this.i2cdev = new I2cDev( this.address, { device : this.device });
-
-  //this.i2cmag = new I2cDev( )
+  this.i2cdev = new I2cDev( this.address, { device : this.device } );
   
-  this.setClockSource( MPU6050.CLOCK_PLL_XGYRO );
+  this.setClockSource( MPU9150.CLOCK_PLL_XGYRO );
   
-  this.setFullScaleGyroRange( MPU6050.GYRO_FS_250 );
-  this.setFullScaleAccelRange( MPU6050.ACCEL_FS_2 );
+  this.setFullScaleGyroRange( MPU9150.GYRO_FS_250 );
+  this.setFullScaleAccelRange( MPU9150.ACCEL_FS_2 );
   
   this.setSleepEnabled(false);
+
+  this.i2cmag = this.enableMag();
+
+  if( !this.testMag() ) {
+    console.log( 'Could not find the Compass module');
+  }
+  
 
 };
 
@@ -74,23 +87,23 @@ MPU6050.prototype.initialize = function() {
  * Make sure the device is connected and responds as expected.
  * @return True if connection is valid, false otherwise
  */
-MPU6050.prototype.testConnection = function() {
+MPU9150.prototype.testConnection = function() {
   return this.getDeviceID() === 0x34;
 };
 
 // WHO_AM_I register
 
-MPU6050.RA_WHO_AM_I = 0x75;
-MPU6050.WHO_AM_I_BIT = 6;
-MPU6050.WHO_AM_I_LENGTH = 6;
+MPU9150.RA_WHO_AM_I = 0x75;
+MPU9150.WHO_AM_I_BIT = 6;
+MPU9150.WHO_AM_I_LENGTH = 6;
 
 /**
  * Get Device ID.
  * This register is used to verify the identity of the device (0b110100).
  * @return Device ID (should be 0x68, 104 dec, 150 oct)
  */
-MPU6050.prototype.getDeviceID = function() {
-  return this.i2cdev.readBits( MPU6050.RA_WHO_AM_I, MPU6050.WHO_AM_I_BIT, MPU6050.WHO_AM_I_LENGTH );
+MPU9150.prototype.getDeviceID = function() {
+  return this.i2cdev.readBits( MPU9150.RA_WHO_AM_I, MPU9150.WHO_AM_I_BIT, MPU9150.WHO_AM_I_LENGTH );
 };
 
 /**
@@ -100,19 +113,19 @@ MPU6050.prototype.getDeviceID = function() {
  * @param id New device ID to set.
  * @see getDeviceID()
  */
-MPU6050.prototype.setDeviceID = function(id) {
-  this.i2cdev.writeBits( MPU6050.RA_WHO_AM_I, MPU6050.WHO_AM_I_BIT, MPU6050.WHO_AM_I_LENGTH, id );
+MPU9150.prototype.setDeviceID = function(id) {
+  this.i2cdev.writeBits( MPU9150.RA_WHO_AM_I, MPU9150.WHO_AM_I_BIT, MPU9150.WHO_AM_I_LENGTH, id );
 };
 
 // GYRO_CONFIG register
 
-MPU6050.RA_GYRO_CONFIG = 0x1B;
-MPU6050.GCONFIG_FS_SEL_BIT = 4;
-MPU6050.GCONFIG_FS_SEL_LENGTH = 2;
-MPU6050.GYRO_FS_250  = 0x00;
-MPU6050.GYRO_FS_500  = 0x01;
-MPU6050.GYRO_FS_1000 = 0x02;
-MPU6050.GYRO_FS_2000 = 0x03;
+MPU9150.RA_GYRO_CONFIG = 0x1B;
+MPU9150.GCONFIG_FS_SEL_BIT = 4;
+MPU9150.GCONFIG_FS_SEL_LENGTH = 2;
+MPU9150.GYRO_FS_250  = 0x00;
+MPU9150.GYRO_FS_500  = 0x01;
+MPU9150.GYRO_FS_1000 = 0x02;
+MPU9150.GYRO_FS_2000 = 0x03;
 
 /**
  * Get full-scale gyroscope range.
@@ -128,32 +141,32 @@ MPU6050.GYRO_FS_2000 = 0x03;
  *
  * @return Current full-scale gyroscope range setting
  */
-MPU6050.prototype.getFullScaleGyroRange = function() {
-  return this.i2cdev.readBits( MPU6050.RA_GYRO_CONFIG, MPU6050.GCONFIG_FS_SEL_BIT, MPU6050.GCONFIG_FS_SEL_LENGTH );
+MPU9150.prototype.getFullScaleGyroRange = function() {
+  return this.i2cdev.readBits( MPU9150.RA_GYRO_CONFIG, MPU9150.GCONFIG_FS_SEL_BIT, MPU9150.GCONFIG_FS_SEL_LENGTH );
 };
 
 /**
  * Set full-scale gyroscope range.
  * @param range New full-scale gyroscope range value
  * @see getFullScaleRange()
- * @see MPU6050_GYRO_FS_250
- * @see MPU6050_RA_GYRO_CONFIG
- * @see MPU6050_GCONFIG_FS_SEL_BIT
- * @see MPU6050_GCONFIG_FS_SEL_LENGTH
+ * @see MPU9150_GYRO_FS_250
+ * @see MPU9150_RA_GYRO_CONFIG
+ * @see MPU9150_GCONFIG_FS_SEL_BIT
+ * @see MPU9150_GCONFIG_FS_SEL_LENGTH
  */
-MPU6050.prototype.setFullScaleGyroRange = function(range) {
-  this.i2cdev.writeBits( MPU6050.RA_GYRO_CONFIG, MPU6050.GCONFIG_FS_SEL_BIT, MPU6050.GCONFIG_FS_SEL_LENGTH, range );
+MPU9150.prototype.setFullScaleGyroRange = function(range) {
+  this.i2cdev.writeBits( MPU9150.RA_GYRO_CONFIG, MPU9150.GCONFIG_FS_SEL_BIT, MPU9150.GCONFIG_FS_SEL_LENGTH, range );
 };
 
 // ACCEL_CONFIG register
 
-MPU6050.RA_ACCEL_CONFIG = 0x1C;
-MPU6050.ACONFIG_AFS_SEL_BIT = 4;
-MPU6050.ACONFIG_AFS_SEL_LENGTH = 2;
-MPU6050.ACCEL_FS_2  = 0x00;
-MPU6050.ACCEL_FS_4  = 0x01;
-MPU6050.ACCEL_FS_8  = 0x02;
-MPU6050.ACCEL_FS_16 = 0x03;
+MPU9150.RA_ACCEL_CONFIG = 0x1C;
+MPU9150.ACONFIG_AFS_SEL_BIT = 4;
+MPU9150.ACONFIG_AFS_SEL_LENGTH = 2;
+MPU9150.ACCEL_FS_2  = 0x00;
+MPU9150.ACCEL_FS_4  = 0x01;
+MPU9150.ACCEL_FS_8  = 0x02;
+MPU9150.ACCEL_FS_16 = 0x03;
 
 /**
  * Get full-scale accelerometer range.
@@ -169,8 +182,8 @@ MPU6050.ACCEL_FS_16 = 0x03;
  *
  * @return Current full-scale accelerometer range setting
  */
-MPU6050.prototype.getFullScaleAccelRange = function() {
-  return this.i2cdev.readBits( MPU6050.RA_ACCEL_CONFIG, MPU6050.ACONFIG_AFS_SEL_BIT, MPU6050.ACONFIG_AFS_SEL_LENGTH );
+MPU9150.prototype.getFullScaleAccelRange = function() {
+  return this.i2cdev.readBits( MPU9150.RA_ACCEL_CONFIG, MPU9150.ACONFIG_AFS_SEL_BIT, MPU9150.ACONFIG_AFS_SEL_LENGTH );
 };
 
 /**
@@ -178,18 +191,18 @@ MPU6050.prototype.getFullScaleAccelRange = function() {
  * @param range New full-scale accelerometer range setting
  * @see getFullScaleAccelRange()
  */
-MPU6050.prototype.setFullScaleAccelRange = function(range) {
-  this.i2cdev.writeBits( MPU6050.RA_ACCEL_CONFIG, MPU6050.ACONFIG_AFS_SEL_BIT, MPU6050.ACONFIG_AFS_SEL_LENGTH, range );
+MPU9150.prototype.setFullScaleAccelRange = function(range) {
+  this.i2cdev.writeBits( MPU9150.RA_ACCEL_CONFIG, MPU9150.ACONFIG_AFS_SEL_BIT, MPU9150.ACONFIG_AFS_SEL_LENGTH, range );
 };
 
 // ACCEL_*OUT_* registers
 
-MPU6050.RA_ACCEL_XOUT_H = 0x3B;
-MPU6050.RA_ACCEL_XOUT_L = 0x3C;
-MPU6050.RA_ACCEL_YOUT_H = 0x3D;
-MPU6050.RA_ACCEL_YOUT_L = 0x3E;
-MPU6050.RA_ACCEL_ZOUT_H = 0x3F;
-MPU6050.RA_ACCEL_ZOUT_L = 0x40;
+MPU9150.RA_ACCEL_XOUT_H = 0x3B;
+MPU9150.RA_ACCEL_XOUT_L = 0x3C;
+MPU9150.RA_ACCEL_YOUT_H = 0x3D;
+MPU9150.RA_ACCEL_YOUT_L = 0x3E;
+MPU9150.RA_ACCEL_ZOUT_H = 0x3F;
+MPU9150.RA_ACCEL_ZOUT_L = 0x40;
 
 /**
  * Get 3-axis accelerometer readings.
@@ -225,8 +238,8 @@ MPU6050.RA_ACCEL_ZOUT_L = 0x40;
  * 
  * @return An array containing the three accellerations.
  */
-MPU6050.prototype.getAcceleration = function() {
-  buffer = this.i2cdev.readBytes( MPU6050.RA_ACCEL_XOUT_H, 6 );
+MPU9150.prototype.getAcceleration = function() {
+  buffer = this.i2cdev.readBytes( MPU9150.RA_ACCEL_XOUT_H, 6 );
   return [
     buffer.readInt16BE(0),
     buffer.readInt16BE(2),
@@ -234,29 +247,29 @@ MPU6050.prototype.getAcceleration = function() {
   ];
 };
 
-MPU6050.prototype.getAccelerationX = function() {
-  buffer = this.i2cdev.readBytes( MPU6050.RA_ACCEL_XOUT_H, 2 );
+MPU9150.prototype.getAccelerationX = function() {
+  buffer = this.i2cdev.readBytes( MPU9150.RA_ACCEL_XOUT_H, 2 );
   return buffer.readInt16BE(0);
 };
 
-MPU6050.prototype.getAccelerationY = function() {
-  buffer = this.i2cdev.readBytes( MPU6050.RA_ACCEL_YOUT_H, 2 );
+MPU9150.prototype.getAccelerationY = function() {
+  buffer = this.i2cdev.readBytes( MPU9150.RA_ACCEL_YOUT_H, 2 );
   return buffer.readInt16BE(0);
 };
 
-MPU6050.prototype.getAccelerationZ = function() {
-  buffer = this.i2cdev.readBytes( MPU6050.RA_ACCEL_ZOUT_H, 2 );
+MPU9150.prototype.getAccelerationZ = function() {
+  buffer = this.i2cdev.readBytes( MPU9150.RA_ACCEL_ZOUT_H, 2 );
   return buffer.readInt16BE(0);
 };
 
 // GYRO_*OUT_* registers
 
-MPU6050.RA_GYRO_XOUT_H = 0x43;
-MPU6050.RA_GYRO_XOUT_L = 0x44;
-MPU6050.RA_GYRO_YOUT_H = 0x45;
-MPU6050.RA_GYRO_YOUT_L = 0x46;
-MPU6050.RA_GYRO_ZOUT_H = 0x47;
-MPU6050.RA_GYRO_ZOUT_L = 0x48;
+MPU9150.RA_GYRO_XOUT_H = 0x43;
+MPU9150.RA_GYRO_XOUT_L = 0x44;
+MPU9150.RA_GYRO_YOUT_H = 0x45;
+MPU9150.RA_GYRO_YOUT_L = 0x46;
+MPU9150.RA_GYRO_ZOUT_H = 0x47;
+MPU9150.RA_GYRO_ZOUT_L = 0x48;
 
 /**
  * Get 3-axis gyroscope readings.
@@ -290,115 +303,137 @@ MPU6050.RA_GYRO_ZOUT_L = 0x48;
  * @param z 16-bit signed integer container for Z-axis rotation
  * @see getMotion6()
  */
-MPU6050.prototype.getRotation = function() {
-   var buffer = this.i2cdev.readBytes(MPU6050.RA_GYRO_XOUT_H, 6);
+MPU9150.prototype.getRotation = function() {
+   var buffer = this.i2cdev.readBytes(MPU9150.RA_GYRO_XOUT_H, 6);
    return [buffer.readInt16BE(0), buffer.readInt16BE(2), buffer.readInt16BE(4)];  
 };
 
-MPU6050.prototype.getRotationX = function() {
-   var buffer = this.i2cdev.readBytes(MPU6050.RA_GYRO_XOUT_H, 2);
+MPU9150.prototype.getRotationX = function() {
+   var buffer = this.i2cdev.readBytes(MPU9150.RA_GYRO_XOUT_H, 2);
    return buffer.readInt16BE(0);  
 };
 
-MPU6050.prototype.getRotationY = function() {
-   var buffer = this.i2cdev.readBytes(MPU6050.RA_GYRO_YOUT_H, 2);
+MPU9150.prototype.getRotationY = function() {
+   var buffer = this.i2cdev.readBytes(MPU9150.RA_GYRO_YOUT_H, 2);
    return buffer.readInt16BE(0);  
 };
 
-MPU6050.prototype.getRotationZ = function() {
-   var buffer = this.i2cdev.readBytes(MPU6050.RA_GYRO_ZOUT_H, 2);
+MPU9150.prototype.getRotationZ = function() {
+   var buffer = this.i2cdev.readBytes(MPU9150.RA_GYRO_ZOUT_H, 2);
    return buffer.readInt16BE(0);  
 };
 
 /* Magnetometer functions */
 
 //Magnetometer Registers
-MPU6050.RA_INT_PIN_CFG  =   0x37
+MPU9150.RA_INT_PIN_CFG  =   0x37
 
-MPU6050.RA_MAG_ADDRESS  =   0x0C
-MPU6050.RA_MAG_XOUT_L   =   0x03
-MPU6050.RA_MAG_XOUT_H   =   0x04
-MPU6050.RA_MAG_YOUT_L   =   0x05
-MPU6050.RA_MAG_YOUT_H   =   0x06
-MPU6050.RA_MAG_ZOUT_L   =   0x07
-MPU6050.RA_MAG_ZOUT_H   =   0x08
+MPU9150.RA_MAG_XOUT_L   =   0x03
+MPU9150.RA_MAG_XOUT_H   =   0x04
+MPU9150.RA_MAG_YOUT_L   =   0x05
+MPU9150.RA_MAG_YOUT_H   =   0x06
+MPU9150.RA_MAG_ZOUT_L   =   0x07
+MPU9150.RA_MAG_ZOUT_H   =   0x08
 
-/*
+MPU9150.RA_CNTL         =   0x0A;
+MPU9150.RA_MODE_SINGLE  =   0x1;
 
-//MPU9150 Compass
-#define MPU9150_CMPS_XOUT_L        0x4A   // R
-#define MPU9150_CMPS_XOUT_H        0x4B   // R
-#define MPU9150_CMPS_YOUT_L        0x4C   // R
-#define MPU9150_CMPS_YOUT_H        0x4D   // R
-#define MPU9150_CMPS_ZOUT_L        0x4E   // R
-#define MPU9150_CMPS_ZOUT_H        0x4F   // R
 
-//http://pansenti.wordpress.com/2013/03/26/pansentis-invensense-mpu-9150-software-for-arduino-is-now-on-github/
-//Thank you to pansenti for setup code.
-void MPU9150_setupCompass(){
-        int tempAddress = MPU9150_I2C_ADDRESS; //temporarily store mpu9150 i2c address as it will later be modified
- 
-        MPU9150_I2C_ADDRESS = 0x0C;      //change Address to Compass   
- 
-        MPU9150_writeSensor(0x0A, 0x00); //PowerDownMode
-        MPU9150_writeSensor(0x0A, 0x0F); //SelfTest
-        MPU9150_writeSensor(0x0A, 0x00); //PowerDownMode
- 
-        //MPU9150_I2C_ADDRESS = 0x68;      //change Address to MPU
-        MPU9150_I2C_ADDRESS = tempAddress; //new version to revert to original address
- 
-        MPU9150_writeSensor(0x24, 0x40); //Wait for Data at Slave0
-        MPU9150_writeSensor(0x25, 0x8C); //Set i2c address at slave0 at 0x0C
-        MPU9150_writeSensor(0x26, 0x02); //Set where reading at slave 0 starts
-        MPU9150_writeSensor(0x27, 0x88); //set offset at start reading and enable
-        MPU9150_writeSensor(0x28, 0x0C); //set i2c address at slv1 at 0x0C
-        MPU9150_writeSensor(0x29, 0x0A); //Set where reading at slave 1 starts
-        MPU9150_writeSensor(0x2A, 0x81); //Enable at set length to 1
-        MPU9150_writeSensor(0x64, 0x01); //overvride register
-        MPU9150_writeSensor(0x67, 0x03); //set delay rate
-        MPU9150_writeSensor(0x01, 0x80);
- 
-        MPU9150_writeSensor(0x34, 0x04); //set i2c slv4 delay
-        MPU9150_writeSensor(0x64, 0x00); //override register
-        MPU9150_writeSensor(0x6A, 0x00); //clear usr setting
-        MPU9150_writeSensor(0x64, 0x01); //override register
-        MPU9150_writeSensor(0x6A, 0x20); //enable master i2c mode
-        MPU9150_writeSensor(0x34, 0x13); //disable slv4
+MPU9150.INTCFG_I2C_BYPASS_EN_BIT    =   1;
+
+// For the compass test function
+MPU9150.RA_WIA   =   0x00;
+
+/** Get I2C bypass enabled status.
+ * When this bit is equal to 1 and I2C_MST_EN (Register 106 bit[5]) is equal to
+ * 0, the host application processor will be able to directly access the
+ * auxiliary I2C bus of the MPU-60X0. When this bit is equal to 0, the host
+ * application processor will not be able to directly access the auxiliary I2C
+ * bus of the MPU-60X0 regardless of the state of I2C_MST_EN (Register 106
+ * bit[5]).
+ * @return Current I2C bypass enabled status
+ * @see MPU9150_RA_INT_PIN_CFG
+ * @see MPU9150_INTCFG_I2C_BYPASS_EN_BIT
+ */
+MPU9150.prototype.getI2CBypassEnabled = function() {
+    var buffer = this.i2cdev.readBit( MPU9150.RA_INT_PIN_CFG, MPU9150.INTCFG_I2C_BYPASS_EN_BIT );
+
+    return buffer[0];
 }
-*/
 
-MPU6050.prototype.enableMag = function() {
-    this.i2cdev.writeByte( MPU6050.RA_INT_PIN_CFG, 0x02 );
-    setTimeout( function() {
-        this.
-        // Needs looked at really - writing to a different address
-        this.i2cdev.writeBytes( MPU6050.RA_MAG_ADDRESS, [0x0A, 0x01] );
-    }, 10 );
+/** Set I2C bypass enabled status.
+ * When this bit is equal to 1 and I2C_MST_EN (Register 106 bit[5]) is equal to
+ * 0, the host application processor will be able to directly access the
+ * auxiliary I2C bus of the MPU-60X0. When this bit is equal to 0, the host
+ * application processor will not be able to directly access the auxiliary I2C
+ * bus of the MPU-60X0 regardless of the state of I2C_MST_EN (Register 106
+ * bit[5]).
+ * @param enabled New I2C bypass enabled status
+ * @see MPU9150_RA_INT_PIN_CFG
+ * @see MPU9150_INTCFG_I2C_BYPASS_EN_BIT
+ */
+MPU9150.prototype.setI2CBypassEnabled = function( enabled ) {
+    this.i2cdev.writeBit( MPU9150.RA_INT_PIN_CFG, MPU9150.INTCFG_I2C_BYPASS_EN_BIT, enabled );
+}
+
+// Enable access to the compass and pass an I2cDev object for access
+MPU9150.prototype.enableMag = function() {
+    // Enable the compass
+    this.setI2CBypassEnabled( true );
+
+    return new I2cDev( this.mag_address, { device : this.device } );
 };
 
-// Function help from http://ejtech.blogspot.co.uk/2014/02/mpu-9150-we-are-reading-magnetometer.html
-MPU6050.prototype.getMag = function() {
-    var buffer = this.i2cdev.readBytes( MPU6050.RA_MAG_XOUT_H, 6 );
+// Read the first byte of the compass and check it returns what it should
+MPU9150.prototype.testMag = function() {
+    var buffer = this.i2cmag.readBytes( MPU9150.RA_WIA, 1 );
 
-    return [
-        buffer.readInt16BE(1),
-        buffer.readInt16BE(3),
-        buffer.readInt16BE(5)
-    ];
-
+    return (buffer[0] == 0x48);
 }
 
+MPU9150.prototype.getHeading = function() {
 
-/*
-I2Cdev::writeByte(devAddr, MPU6050_RA_INT_PIN_CFG, 0x02); //set i2c bypass enable pin to true to access magnetometer
-    delay(10);
-    I2Cdev::writeByte(MPU9150_RA_MAG_ADDRESS, 0x0A, 0x01); //enable the magnetometer
-    delay(10);
-    I2Cdev::readBytes(MPU9150_RA_MAG_ADDRESS, MPU9150_RA_MAG_XOUT_L, 6, buffer);
-    *mx = (((int16_t)buffer[0]) << 8) | buffer[1];
-    *my = (((int16_t)buffer[2]) << 8) | buffer[3];
-    *mz = (((int16_t)buffer[4]) << 8) | buffer[5];
-*/
+    this.i2cmag.writeBytes( MPU9150.RA_CNTL, MPU9150.RA_MODE_SINGLE );
+    
+    var buffer = this.i2cmag.readBytes( MPU9150.RA_MAG_XOUT_L, 6 );
+    
+    return [
+        buffer.readInt16LE(0),
+        buffer.readInt16LE(2),
+        buffer.readInt16LE(4)
+    ];
+        
+}
+
+MPU9150.prototype.getHeadingX = function() {
+
+    this.i2cmag.writeBytes( MPU9150.RA_CNTL, MPU9150.RA_MODE_SINGLE );
+    
+    var buffer = this.i2cmag.readBytes( MPU9150.RA_MAG_XOUT_L, 2 );
+    
+    return buffer.readInt16LE(0);
+        
+}
+
+MPU9150.prototype.getHeadingY = function() {
+
+    this.i2cmag.writeBytes( MPU9150.RA_CNTL, MPU9150.RA_MODE_SINGLE );
+    
+    var buffer = this.i2cmag.readBytes( MPU9150.RA_MAG_YOUT_L, 2 );
+    
+    return buffer.readInt16LE(0);
+        
+}
+
+MPU9150.prototype.getHeadingZ = function() {
+
+    this.i2cmag.writeBytes( MPU9150.RA_CNTL, MPU9150.RA_MODE_SINGLE );
+    
+    var buffer = this.i2cmag.readBytes( MPU9150.RA_MAG_ZOUT_L, 2 );
+    
+    return buffer.readInt16LE(0);
+        
+}
 
 /**
  * Get raw 6-axis motion sensor readings (accel/gyro).
@@ -406,8 +441,8 @@ I2Cdev::writeByte(devAddr, MPU6050_RA_INT_PIN_CFG, 0x02); //set i2c bypass enabl
  * @see getAcceleration()
  * @see getRotation()
  */
-MPU6050.prototype.getMotion6 = function() {
-  buffer = this.i2cdev.readBytes( MPU6050.RA_ACCEL_XOUT_H, 14 );
+MPU9150.prototype.getMotion6 = function() {
+  buffer = this.i2cdev.readBytes( MPU9150.RA_ACCEL_XOUT_H, 14 );
   
   return [
       buffer.readInt16BE(0),
@@ -425,8 +460,10 @@ MPU6050.prototype.getMotion6 = function() {
  * @see getAcceleration()
  * @see getRotation()
  */
-MPU6050.prototype.getMotion9 = function() {
-  buffer = this.i2cdev.readBytes( MPU6050.RA_ACCEL_XOUT_H, 14 );
+MPU9150.prototype.getMotion9 = function() {
+  buffer = this.i2cdev.readBytes( MPU9150.RA_ACCEL_XOUT_H, 14 );
+
+  mag = this.getHeading();
   
   return [
       buffer.readInt16BE(0),
@@ -434,19 +471,22 @@ MPU6050.prototype.getMotion9 = function() {
       buffer.readInt16BE(4),
       buffer.readInt16BE(8),
       buffer.readInt16BE(10),
-      buffer.readInt16BE(12)
+      buffer.readInt16BE(12),
+      mag[0],
+      mag[1],
+      mag[2]
   ];
 };
 
 // PWR_MGMT_1 register
 
-MPU6050.RA_PWR_MGMT_1 = 0x6B;
-MPU6050.PWR1_DEVICE_RESET_BIT = 7;
-MPU6050.PWR1_SLEEP_BIT = 6;
-MPU6050.PWR1_CYCLE_BIT = 5;
-MPU6050.PWR1_TEMP_DIS_BIT = 3;
-MPU6050.PWR1_CLKSEL_BIT = 2;
-MPU6050.PWR1_CLKSEL_LENGTH = 3;
+MPU9150.RA_PWR_MGMT_1 = 0x6B;
+MPU9150.PWR1_DEVICE_RESET_BIT = 7;
+MPU9150.PWR1_SLEEP_BIT = 6;
+MPU9150.PWR1_CYCLE_BIT = 5;
+MPU9150.PWR1_TEMP_DIS_BIT = 3;
+MPU9150.PWR1_CLKSEL_BIT = 2;
+MPU9150.PWR1_CLKSEL_LENGTH = 3;
 
 /** Get sleep mode status.
  * Setting the SLEEP bit in the register puts the device into very low power
@@ -456,29 +496,29 @@ MPU6050.PWR1_CLKSEL_LENGTH = 3;
  * selections for each of the gyros should be used if any gyro axis is not used
  * by the application.
  * @return Current sleep mode enabled status
- * @see MPU6050_RA_PWR_MGMT_1
- * @see MPU6050_PWR1_SLEEP_BIT
+ * @see MPU9150_RA_PWR_MGMT_1
+ * @see MPU9150_PWR1_SLEEP_BIT
  */
-MPU6050.prototype.getSleepEnabled = function() {
-  return this.i2cdev.readBit(MPU6050.RA_PWR_MGMT_1, MPU6050.PWR1_SLEEP_BIT);
+MPU9150.prototype.getSleepEnabled = function() {
+  return this.i2cdev.readBit(MPU9150.RA_PWR_MGMT_1, MPU9150.PWR1_SLEEP_BIT);
 };
 
 /** Set sleep mode status.
  * @param enabled New sleep mode enabled status
  * @see getSleepEnabled()
- * @see MPU6050_RA_PWR_MGMT_1
- * @see MPU6050_PWR1_SLEEP_BIT
+ * @see MPU9150_RA_PWR_MGMT_1
+ * @see MPU9150_PWR1_SLEEP_BIT
  */
-MPU6050.prototype.setSleepEnabled = function(enabled) {
-  this.i2cdev.writeBit(MPU6050.RA_PWR_MGMT_1, MPU6050.PWR1_SLEEP_BIT, enabled);
+MPU9150.prototype.setSleepEnabled = function(enabled) {
+  this.i2cdev.writeBit(MPU9150.RA_PWR_MGMT_1, MPU9150.PWR1_SLEEP_BIT, enabled);
 };
 
 /**
  * Get clock source setting.
  * @return Current clock source setting
  */
-MPU6050.prototype.getClockSource = function() {
-  return this.i2cdev.readBits(MPU6050.RA_PWR_MGMT_1, MPU6050.PWR1_CLKSEL_BIT, MPU6050.PWR1_CLKSEL_LENGTH);
+MPU9150.prototype.getClockSource = function() {
+  return this.i2cdev.readBits(MPU9150.RA_PWR_MGMT_1, MPU9150.PWR1_CLKSEL_BIT, MPU9150.PWR1_CLKSEL_LENGTH);
 };
 
 /**
@@ -509,8 +549,8 @@ MPU6050.prototype.getClockSource = function() {
  * @param source New clock source setting
  * @see getClockSource()
  */
-MPU6050.prototype.setClockSource = function(source) {
-  this.i2cdev.writeBits(MPU6050.RA_PWR_MGMT_1, MPU6050.PWR1_CLKSEL_BIT, MPU6050.PWR1_CLKSEL_LENGTH, source);
+MPU9150.prototype.setClockSource = function(source) {
+  this.i2cdev.writeBits(MPU9150.RA_PWR_MGMT_1, MPU9150.PWR1_CLKSEL_BIT, MPU9150.PWR1_CLKSEL_LENGTH, source);
 };
 
 
@@ -519,7 +559,7 @@ MPU6050.prototype.setClockSource = function(source) {
 
 
 
-module.exports = MPU6050;
+module.exports = MPU9150;
 
 /**
  * This class extends the i2c library with some extra functionality available
