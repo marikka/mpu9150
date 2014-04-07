@@ -5,7 +5,7 @@
   "main": "index.js",
   "homepage": "http://shrkey.com",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "sudo node ./tests/test.js"
   },
   "repository": {
     "type": "git",
