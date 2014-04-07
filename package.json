@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "description": "A library to communicate with the MPU-9150 9dof chip.",
   "main": "index.js",
+  "homepage": "http://shrkey.com",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
