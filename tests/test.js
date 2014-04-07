@@ -4,10 +4,7 @@ var imu = new mpu9150();
 imu.initialize();
 
 if( imu.testConnection() ) {
-	
-	setInterval( function() {
-		console.log(imu.getMotion9());
-	}, 1000 );
+	console.log(imu.getMotion9());
 }
 
-//imu.setSleepEnabled(1);
+imu.setSleepEnabled(1);
