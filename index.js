@@ -245,25 +245,25 @@ MPU9150.RA_ACCEL_ZOUT_L = 0x40;
 MPU9150.prototype.getAcceleration = function() {
   buffer = this.i2cdev.readBytes( MPU9150.RA_ACCEL_XOUT_H, 6 );
   return [
-    buffer.readInt16BE(0),
-    buffer.readInt16BE(2),
-    buffer.readInt16BE(4)
+    makeSignedInteger( buffer[0], buffer[1] ),
+    makeSignedInteger( buffer[2], buffer[3] ),
+    makeSignedInteger( buffer[4], buffer[5] )
   ];
 };
 
 MPU9150.prototype.getAccelerationX = function() {
   buffer = this.i2cdev.readBytes( MPU9150.RA_ACCEL_XOUT_H, 2 );
-  return buffer.readInt16BE(0);
+  return makeSignedInteger( buffer[0], buffer[1] );
 };
 
 MPU9150.prototype.getAccelerationY = function() {
   buffer = this.i2cdev.readBytes( MPU9150.RA_ACCEL_YOUT_H, 2 );
-  return buffer.readInt16BE(0);
+  return makeSignedInteger( buffer[0], buffer[1] );
 };
 
 MPU9150.prototype.getAccelerationZ = function() {
   buffer = this.i2cdev.readBytes( MPU9150.RA_ACCEL_ZOUT_H, 2 );
-  return buffer.readInt16BE(0);
+  return makeSignedInteger( buffer[0], buffer[1] );
 };
 
 // GYRO_*OUT_* registers
@@ -309,22 +309,26 @@ MPU9150.RA_GYRO_ZOUT_L = 0x48;
  */
 MPU9150.prototype.getRotation = function() {
    var buffer = this.i2cdev.readBytes(MPU9150.RA_GYRO_XOUT_H, 6);
-   return [buffer.readInt16BE(0), buffer.readInt16BE(2), buffer.readInt16BE(4)];  
+   return [
+            makeSignedInteger( buffer[0], buffer[1] ),
+            makeSignedInteger( buffer[2], buffer[3] ),
+            makeSignedInteger( buffer[4], buffer[5] )
+   ];  
 };
 
 MPU9150.prototype.getRotationX = function() {
    var buffer = this.i2cdev.readBytes(MPU9150.RA_GYRO_XOUT_H, 2);
-   return buffer.readInt16BE(0);  
+   return makeSignedInteger( buffer[0], buffer[1] );  
 };
 
 MPU9150.prototype.getRotationY = function() {
    var buffer = this.i2cdev.readBytes(MPU9150.RA_GYRO_YOUT_H, 2);
-   return buffer.readInt16BE(0);  
+   return makeSignedInteger( buffer[0], buffer[1] );  
 };
 
 MPU9150.prototype.getRotationZ = function() {
    var buffer = this.i2cdev.readBytes(MPU9150.RA_GYRO_ZOUT_H, 2);
-   return buffer.readInt16BE(0);  
+   return makeSignedInteger( buffer[0], buffer[1] );  
 };
 
 /* Magnetometer functions */
@@ -344,6 +348,9 @@ MPU9150.RA_MODE_SINGLE  =   0x01;
 
 
 MPU9150.INTCFG_I2C_BYPASS_EN_BIT    =   1;
+
+MPU9150.MAG_RA_ST1      =   0x02;
+MPU9150.MAG_ST1_READY   =   0x01;
 
 // For the compass test function
 MPU9150.RA_WIA   =   0x00;
@@ -390,9 +397,9 @@ MPU9150.prototype.enableMag = function() {
     this.i2cmag = new I2cDev( this.mag_address, { device : this.device } );
 
     if( this.testMag() ) {
-        this.i2cmag.writeBytes( MPU9150.RA_CNTL, 0x00 );    // Power down
-        this.i2cmag.writeBytes( MPU9150.RA_CNTL, 0x0F );    // Self test
-        this.i2cmag.writeBytes( MPU9150.RA_CNTL, 0x00 );    // Power down
+        //this.i2cmag.writeBytes( MPU9150.RA_CNTL, 0x00 );    // Power down
+        //this.i2cmag.writeBytes( MPU9150.RA_CNTL, 0x0F );    // Self test
+        //this.i2cmag.writeBytes( MPU9150.RA_CNTL, 0x00 );    // Power down
 
         /*
         this.i2cdev.writeBytes(0x24, 0x40); //Wait for Data at Slave0
@@ -413,6 +420,8 @@ MPU9150.prototype.enableMag = function() {
         this.i2cdev.writeBytes(0x6A, 0x20); //enable master i2c mode
         this.i2cdev.writeBytes(0x34, 0x13); //disable slv4
         */
+    } else {
+        console.log( 'No compass found' );
     }
 };
 
@@ -427,45 +436,66 @@ MPU9150.prototype.setUpdatePeriod = function( ms ) {
 
     this.mag_update_period = ms || 100;
 
-} 
-
-MPU9150.prototype.getHeading = function() {
-
-    this.i2cmag.writeBytes( MPU9150.RA_CNTL, MPU9150.RA_MODE_SINGLE );
-    
-    setTimeout( (function( mpu9150 ) {
-        
-        if( mpu9150.heading.lastupdate + mpu9150.mag_update_period <  Date.now() ) {
-
-            var buffer = mpu9150.i2cmag.readBytes( 0x03, 6 );
-
-            mpu9150.heading.x = buffer.readInt16LE(0);
-            mpu9150.heading.y = buffer.readInt16LE(2);
-            mpu9150.heading.z = buffer.readInt16LE(4);
-
-            mpu9150.heading.lastupdate = Date.now();
-
-        }
-
-    })( this ), 100 );
-    
-    return [
-        this.heading.x,
-        this.heading.y,
-        this.heading.z
-    ];
-        
 }
 
-MPU9150.prototype.getHeadingDegrees = function() {
+MPU9150.prototype.getDataReady = function() {
+    
+    var buffer = this.i2cmag.readByte( MPU9150.MAG_RA_ST1 );
+    
+    return buffer;
+} 
 
-    var buffer = this.getHeading();
+MPU9150.prototype.getDataStatus = function() {
+    
+    var buffer = this.i2cmag.readByte( 0x09 );
+    
+    return buffer;
+} 
 
-    heading = Math.atan2( buffer[1], buffer[0] ) * 180.0 / 3.14159265 + 180;
-    while (heading < 0) heading += 360;
-    while (heading > 360) heading -= 360;
+/*
+// ST2 register
+bool AK8975::getOverflowStatus() {
+    I2Cdev::readBit(devAddr, AK8975_RA_ST2, AK8975_ST2_HOFL_BIT, buffer);
+    return buffer[0];
+}
+bool AK8975::getDataError() {
+    I2Cdev::readBit(devAddr, AK8975_RA_ST2, AK8975_ST2_DERR_BIT, buffer);
+    return buffer[0];
+}
+*/
 
-    return heading;
+MPU9150.prototype.loadHeading = function() {
+
+  this.i2cmag.writeBytes( MPU9150.RA_CNTL, [MPU9150.RA_MODE_SINGLE] );
+  
+  // Wait until ready  
+  while( this.getDataReady() != MPU9150.MAG_ST1_READY ) {}
+
+  var buffer = this.i2cmag.readBytes( MPU9150.RA_MAG_XOUT_L, 6 );
+
+  this.heading.x = makeSignedInteger( buffer[1], buffer[0] ); 
+  this.heading.y = makeSignedInteger( buffer[3], buffer[2] ); 
+  this.heading.z = makeSignedInteger( buffer[5], buffer[4] ); 
+  this.heading.lastupdate = Date.now();
+
+}
+
+MPU9150.prototype.getHeading = function( load ) {
+
+  var doload = load || false;
+
+  if( (this.heading.lastupdate + this.mag_update_period <  Date.now()) || doload == true ) {
+
+    this.loadHeading();
+
+  }
+
+  return [
+    this.heading.x,
+    this.heading.y,
+    this.heading.z
+  ];
+        
 }
 
 MPU9150.prototype.getHeadingX = function() {
@@ -661,3 +691,25 @@ I2cDev.prototype.writeBits = function(func, bit, bitLength, value, callback) {
 I2cDev.prototype.writeBit = function(func, bit, value, callback) {
   this.writeBits(func, bit, 1, value, callback);
 };
+
+/**
+  * Helper functions from - https://github.com/hybridgroup/cylon-i2c/blob/master/lib/mpu6050.js
+  *
+  */
+
+// we have high and low bits for a signed 16bit integer
+// so it has to be converted into signed 32bit integer
+function makeSignedInteger(highBits, lowBits) {
+  var minusBits = 128;
+  var leadingOnes = 4294901760;
+
+  var value = (highBits << 8) | lowBits;
+
+  if ((highBits & minusBits) == minusBits) {
+    // first bit is 1, so the value has to be minus
+
+    return value | leadingOnes;
+  }
+
+  return value;
+}
