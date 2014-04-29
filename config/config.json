@@ -1,0 +1,64 @@
+{
+	"device"				: "Julius",
+	"debug"					: false,
+	"debug_commands"		: false,
+	"production"			: true,
+	"sample_freq"			: 20,
+	"dead_zone"				: 10,
+	"port"					: 8080,
+	"serial"				: "/dev/ttyO1",
+	"serial_baud"			: 115200,
+	"deadzone_pos"			: 0.1,
+	"deadzone_neg"			: -0.1,
+	"smoothingIncriment"	: 4,
+	"layouts"				: {
+		"default"					: "Centered Video (default)",
+		"fullscreen"				: "Fullscreen Video",
+		"leftvideotwocolumns"		: "Left Video ( 2 columns )",
+		"rightvideotwocolumns"		: "Right Video ( 2 columns )",
+		"leftvideothreecolumns"		: "Left Video ( 3 columns )",
+		"rightvideothreecolumns"	: "Right Video ( 3 columns )",
+		"leftvideofourcolumns"		: "Left Video ( 4 columns )",
+		"rightvideofourcolumns"		: "Right Video ( 4 columns )",
+		"novideotwocolumns"			: "No Video ( 2 columns )",
+		"novideofourcolumns"		: "No Video ( 4 columns )"
+	},
+	"internalmodules"		: {
+		"heartbeat"			: {
+			"controller"	: "./controllers/heartbeat.js"
+		},
+		"commander"			: {
+			"controller"	: "./controllers/commander.js"
+		},
+		"hardware"			: {
+			"controller"	: "./controllers/hardware.js",
+			"config"		: "../config/bone.js",
+			"bspm"			: "/home/dw/cockpit/config/bspm_template.dts",
+			"bspwm"			: "/home/dw/cockpit/config/bspwm_template.dts"
+		}
+	},
+	"modules"				: {
+		"rovcamera"			: {
+			"label"					:  "Camera",
+			"video_frame_rate"		:  20,
+			"video_resolution"		:  "1920x1080",
+			"video_device"			:  "/dev/video0",
+			"video_port"			:  8090,
+			"photo_directory"		:  "/home/dw/photos",
+			"controller"			:  "./controllers/modules/rovcamera",
+			"library"				:  "camera.js"
+		},
+		"debug"				: {
+			"label"					:  "Debug",
+			"library"				:  "debug.js"
+		},
+		"location"				: {
+			"label"					:  "Location",
+			"library"				:  "locationgrid.js"
+		},
+		"depth"				: {
+			"label"					:  "Depth",
+			"library"				:  "depthgrid.js"
+		}
+	}
+}
