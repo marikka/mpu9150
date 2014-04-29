@@ -7,4 +7,6 @@ module.exports.GyroAccelSampleRate = 50;
 module.exports.GyroFsr = MPU.MPU9150_GYROFSR_1000;
 module.exports.AccelFsr = MPU.MPU9150_ACCELFSR_8;
 
+module.exports.CompassSampleRate = 25;
+
 module.exports.PI = Math.PI;

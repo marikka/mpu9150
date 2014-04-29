@@ -34,6 +34,7 @@ var i2c = require('i2c');
 
 var MPU = require('./config/defines');
 var settings = require('./config/settings');
+var mpumath = require('./lib/mpumath');
 
 /**
  * Default constructor, uses default I2C address or default SS Pin if SPI
@@ -42,6 +43,7 @@ var settings = require('./config/settings');
 function MPU9150(device, address, mag_address ) {
   this.device = device || '/dev/i2c-1';
   this.address = address || MPU.MPU9150_ADDRESS0;
+  this.mag_address = mag_address || MPU.AK8975_ADDRESS;
 }
 
 /**
@@ -96,31 +98,119 @@ MPU9150.prototype.initialize = function() {
 
     this.bypassOn();
 
+    // Compass configuration
+    this.i2cmag = new I2cDev( this.mag_address, { device : this.device } );
 
+    this.i2cmag.writeBytes( MPU.AK8975_CNTL, [ 0 ], function(err) { if( err != null) console.log( "Failed to compass in power down - " + err ); } );
+   
+    this.i2cmag.writeBytes( MPU.AK8975_CNTL, [ 0x0f ], function(err) { if( err != null) console.log( "Failed to compass in fuse ROM mode - " + err ); } );
+   
+    var asa = this.i2cmag.readBytes( MPU.AK8975_ASAX, 3 );
 
+    console.log( asa );
+
+    //  convert asa to usable scale factor
+    this.compassAdjust = [];
+
+    this.compassAdjust[0] = (asa[0] - 128.0) / 256.0 + 1.0;
+    this.compassAdjust[1] = (asa[1] - 128.0) / 256.0 + 1.0;
+    this.compassAdjust[2] = (asa[2] - 128.0) / 256.0 + 1.0;
+
+    console.log( this.compassAdjust );
+
+    // Power down
+    this.i2cmag.writeBytes( MPU.AK8975_CNTL, [ 0 ], function(err) { if( err != null) console.log( "Failed to compass in power down 2 - " + err ); } );
 
     this.bypassOff();
-    /*
 
+    //  now set up MPU9150 to talk to the compass chip
 
+    this.i2cdev.writeBytes( MPU.MPU9150_I2C_MST_CTRL, [ 0x40 ], function(err) { if( err != null) console.log( "Failed to set I2C master mode - " + err ); } );
 
-    if (!I2CWrite(m_slaveAddr, MPU9150_ACCEL_CONFIG, m_accelFsr, "Failed to set accel fsr"))
-         return false;
-  */
+    this.i2cdev.writeBytes( MPU.MPU9150_I2C_SLV0_ADDR, [ 0x80 | this.mag_address ], function(err) { if( err != null) console.log( "Failed to set slave 0 address - " + err ); } );
+
+    this.i2cdev.writeBytes( MPU.MPU9150_I2C_SLV0_REG, [ MPU.AK8975_ST1 ], function(err) { if( err != null) console.log( "Failed to set slave 0 reg - " + err ); } );
+
+    this.i2cdev.writeBytes( MPU.MPU9150_I2C_SLV0_CTRL, [ 0x88 ], function(err) { if( err != null) console.log( "Failed to set slave 0 ctrl - " + err ); } );
+
+    this.i2cdev.writeBytes( MPU.MPU9150_I2C_SLV1_ADDR, [ this.mag_address ], function(err) { if( err != null) console.log( "Failed to set slave 1 address - " + err ); } );
+
+    this.i2cdev.writeBytes( MPU.MPU9150_I2C_SLV1_REG, [ MPU.AK8975_CNTL ], function(err) { if( err != null) console.log( "Failed to set slave 1 reg - " + err ); } );
+
+    this.i2cdev.writeBytes( MPU.MPU9150_I2C_SLV1_CTRL, [ 0x81 ], function(err) { if( err != null) console.log( "Failed to slave 1 ctrl - " + err ); } );
+
+    this.i2cdev.writeBytes( MPU.MPU9150_I2C_SLV1_DO, [ 0x1 ], function(err) { if( err != null) console.log( "Failed to set slave 1 DO - " + err ); } );
+
+    this.i2cdev.writeBytes( MPU.MPU9150_I2C_MST_DELAY_CTRL, [ 0x3 ], function(err) { if( err != null) console.log( "Failed to set mst delay - " + err ); } );
+
+    this.i2cdev.writeBytes( MPU.MPU9150_YG_OFFS_TC, [ 0x80 ], function(err) { if( err != null) console.log( "Failed to set yg offs tc - " + err ); } );
+
+    this.setCompassRate( settings.CompassSampleRate );
+
+    //  enable the sensors
+
+    this.i2cdev.writeBytes( MPU.MPU9150_PWR_MGMT_1, [ 1 ], function(err) { if( err != null) console.log( "Failed to set pwr mgmt 1 - " + err ); } );
+
+    this.i2cdev.writeBytes( MPU.MPU9150_PWR_MGMT_2, [ 0 ], function(err) { if( err != null) console.log( "Failed to set pwr mgmt 2 - " + err ); } );
+
+    //  select the data to go into the FIFO and enable
+    this.resetFifo();
+    
+    this.gyroAlpha = 1.0 / this.sampleRate;
+    this.gyroStartTime = mpumath.currentUSecsSinceEpoch();
+    this.gyroLearning = true;
+
+    console.log( this.gyroStartTime );
+
+    console.log("MPU9150 init complete");
+    return true;
 
 };
+
+MPU9150.prototype.resetFifo = function(){
+
+  this.i2cdev.writeBytes( MPU.MPU9150_INT_ENABLE, [ 0 ], function(err) { if( err != null) console.log( "Writing int enable- " + err ); } );
+
+  this.i2cdev.writeBytes( MPU.MPU9150_FIFO_EN, [ 0 ], function(err) { if( err != null) console.log( "Writing fifo enable- " + err ); } );
+
+  this.i2cdev.writeBytes( MPU.MPU9150_USER_CTRL, [ 0 ], function(err) { if( err != null) console.log( "Writing user control- " + err ); } );
+
+  this.i2cdev.writeBytes( MPU.MPU9150_USER_CTRL, [ 0x04 ], function(err) { if( err != null) console.log( "Resetting fifo- " + err ); } );
+
+  this.i2cdev.writeBytes( MPU.MPU9150_USER_CTRL, [ 0x60 ], function(err) { if( err != null) console.log( "Enabling fifo- " + err ); } );
+
+  //delayMs(50);
+
+  this.i2cdev.writeBytes( MPU.MPU9150_INT_ENABLE, [ 1 ], function(err) { if( err != null) console.log( "Writing int enable- " + err ); } );
+
+  this.i2cdev.writeBytes( MPU.MPU9150_FIFO_EN, [ 0x78 ], function(err) { if( err != null) console.log( "Failed to write FIFO enables - " + err ); } );
+
+  return true;
+}
+
+
+
+MPU9150.prototype.setCompassRate = function( compassRate ) {
+
+  this.compassRate = compassRate;
+
+  var rate = this.sampleRate / compassRate - 1;
+
+  if (rate > 31) {
+      rate = 31;
+  }
+
+  this.i2cdev.writeBytes( MPU.MPU9150_I2C_SLV4_CTRL, [ rate ], function(err) { if( err != null) console.log( "Failed to set slave ctrl 4 - " + err ); } );
+
+  return true;
+}
 
 MPU9150.prototype.bypassOn = function()
 {
 
     var userControl = this.i2cdev.readBytes( MPU.MPU9150_USER_CTRL, 1 );
 
-    console.log( MPU.MPU9150_USER_CTRL );
-    console.log( userControl[0] );
-
     userControl = userControl[0] & 0x20;
-
-    console.log( userControl );
 
     this.i2cdev.writeBytes( MPU.MPU9150_USER_CTRL, [ userControl ], function(err) { if( err != null) console.log( "Failed to write Usrcontrol - " + err ); } );
 
@@ -135,12 +225,7 @@ MPU9150.prototype.bypassOff = function() {
     
     var userControl = this.i2cdev.readBytes( MPU.MPU9150_USER_CTRL, 1 );
 
-    console.log( MPU.MPU9150_USER_CTRL );
-    console.log( userControl[0] );
-
     userControl = userControl[0] | 0x20;
-
-    console.log( userControl );
 
     this.i2cdev.writeBytes( MPU.MPU9150_USER_CTRL, [ userControl ], function(err) { if( err != null) console.log( "Failed to write Usrcontrol - " + err ); } );
 
@@ -289,6 +374,7 @@ MPU9150.prototype.setSampleRate = function( rate ) {
       clockRate = 8000;
     }
 
+    this.sampleRate = rate;
     this.sampleInterval = 1000000 / rate;
 
     this.i2cdev.writeBytes( MPU.MPU9150_SMPRT_DIV, [ (clockRate / rate - 1) ], function( err ) { if( err != null) console.log( "Failed to set sample rate - " + err ); } );
