@@ -1,30 +1,28 @@
 {
-  "name": "mpu9150",
+  "name": "DarkWater-Cockpit",
+  "author": "Dark Water Foundation",
+  "description": "The cockpit software for the Dark Water equipment",
   "version": "0.0.1",
-  "description": "A library to communicate with the MPU-9150 9dof chip.",
-  "main": "index.js",
-  "homepage": "http://shrkey.com",
-  "scripts": {
-    "test": "sudo node ./tests/test.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/shrkey/mpu9150.git"
-  },
+  "private": true,
   "dependencies": {
-    "i2c" : "*"
+    "express": ">= 3.4.0",
+    "serialport": ">= 1.0.8",
+    "socket.io": "",
+    "nconf": "",
+    "request": "",
+    "moment": "",
+    "mkdirp": "",
+    "forever-monitor": "",
+    "node-xmpp": "",
+    "express3-handlebars": ""
   },
-  "keywords": [
-    "beaglebone",
-    "node",
-    "mpu9150",
-    "i2c",
-    "serial"
+  "bundleDependencies": [
+    "express",
+    "socket.io",
+    "serialport",
+    "express3-handlebars"
   ],
-  "author": "Shrkey",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/shrkey/mpu9150/issues"
-  },
-  "readmeFilename": "readme.MD"
+  "engines": {
+    "node": ">= 0.8"
+  }
 }
