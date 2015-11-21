@@ -12,7 +12,7 @@
     "url": "https://github.com/shrkey/mpu9150.git"
   },
   "dependencies": {
-    "i2c" : "*"
+    "i2c": "https://github.com/polaris/node-i2c"
   },
   "keywords": [
     "beaglebone",
